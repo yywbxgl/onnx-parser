@@ -1,0 +1,348 @@
+----------model------------- 
+ir_version: 3
+opset_import = [
+    domain: 
+    version: 8
+]
+producer_name: CNTK
+producer_version: 2.5.1
+domain: ai.cntk
+model_version: 1
+doc_string: 
+metadata_props = [
+]
+----------model graph------------- 
+name: CNTKGraph
+doc_string: 
+----------model graph initializer ------------- 
+initializer = [
+name: Parameter193
+dims: 16 4 4 10 
+date_type: FLOAT
+segment begin: 0
+segment end: 0
+
+name: Parameter87
+dims: 16 8 5 5 
+date_type: FLOAT
+segment begin: 0
+segment end: 0
+
+name: Parameter5
+dims: 8 1 5 5 
+date_type: FLOAT
+segment begin: 0
+segment end: 0
+
+name: Parameter6
+dims: 8 1 1 
+date_type: FLOAT
+segment begin: 0
+segment end: 0
+
+name: Parameter88
+dims: 16 1 1 
+date_type: FLOAT
+segment begin: 0
+segment end: 0
+
+name: Pooling160_Output_0_reshape0_shape
+dims: 2 
+date_type: INT64
+segment begin: 0
+segment end: 0
+
+name: Parameter193_reshape1_shape
+dims: 2 
+date_type: INT64
+segment begin: 0
+segment end: 0
+
+name: Parameter194
+dims: 1 10 
+date_type: FLOAT
+segment begin: 0
+segment end: 0
+
+]
+----------model graph input ------------- 
+input = [
+name: Input3
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 1 28 28 ]
+
+name: Parameter5
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 8 1 5 5 ]
+
+name: Parameter6
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 8 1 1 ]
+
+name: Parameter87
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 16 8 5 5 ]
+
+name: Parameter88
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 16 1 1 ]
+
+name: Pooling160_Output_0_reshape0_shape
+type_value_elem_type: INT64
+type_value_shape_dim = [ 2 ]
+
+name: Parameter193
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 16 4 4 10 ]
+
+name: Parameter193_reshape1_shape
+type_value_elem_type: INT64
+type_value_shape_dim = [ 2 ]
+
+name: Parameter194
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 10 ]
+
+]
+----------model graph output ------------- 
+output = [
+name: Plus214_Output_0
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 10 ]
+
+]
+----------model graph value_info ------------- 
+value_info = [
+name: Parameter193_reshape1
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 256 10 ]
+
+name: Convolution28_Output_0
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 8 28 28 ]
+
+name: Plus30_Output_0
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 8 28 28 ]
+
+name: ReLU32_Output_0
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 8 28 28 ]
+
+name: Pooling66_Output_0
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 8 14 14 ]
+
+name: Convolution110_Output_0
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 16 14 14 ]
+
+name: Plus112_Output_0
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 16 14 14 ]
+
+name: ReLU114_Output_0
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 16 14 14 ]
+
+name: Pooling160_Output_0
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 16 4 4 ]
+
+name: Pooling160_Output_0_reshape0
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 256 ]
+
+name: Times212_Output_0
+type_value_elem_type: FLOAT
+type_value_shape_dim = [ 1 10 ]
+
+]
+----------model graph quantization_annotation ------------- 
+quantization_annotation = [
+]
+----------model graph Nodes ------------- 
+Nodes = [
+
+____node 0 ____
+name: Times212_reshape1
+op_type: Reshape
+input = Parameter193   Parameter193_reshape1_shape   
+out = Parameter193_reshape1   
+attribute = [
+]
+
+
+____node 1 ____
+name: Convolution28
+op_type: Conv
+input = Input3   Parameter5   
+out = Convolution28_Output_0   
+attribute = [
+name: kernel_shape
+type: INTS
+Value = [5 5 ]
+
+name: strides
+type: INTS
+Value = [1 1 ]
+
+name: auto_pad
+type: STRING
+Value = SAME_UPPER
+
+name: group
+type: INT
+Value = 1
+
+name: dilations
+type: INTS
+Value = [1 1 ]
+
+]
+
+
+____node 2 ____
+name: Plus30
+op_type: Add
+input = Convolution28_Output_0   Parameter6   
+out = Plus30_Output_0   
+attribute = [
+]
+
+
+____node 3 ____
+name: ReLU32
+op_type: Relu
+input = Plus30_Output_0   
+out = ReLU32_Output_0   
+attribute = [
+]
+
+
+____node 4 ____
+name: Pooling66
+op_type: MaxPool
+input = ReLU32_Output_0   
+out = Pooling66_Output_0   
+attribute = [
+name: kernel_shape
+type: INTS
+Value = [2 2 ]
+
+name: strides
+type: INTS
+Value = [2 2 ]
+
+name: pads
+type: INTS
+Value = [0 0 0 0 ]
+
+name: auto_pad
+type: STRING
+Value = NOTSET
+
+]
+
+
+____node 5 ____
+name: Convolution110
+op_type: Conv
+input = Pooling66_Output_0   Parameter87   
+out = Convolution110_Output_0   
+attribute = [
+name: kernel_shape
+type: INTS
+Value = [5 5 ]
+
+name: strides
+type: INTS
+Value = [1 1 ]
+
+name: auto_pad
+type: STRING
+Value = SAME_UPPER
+
+name: group
+type: INT
+Value = 1
+
+name: dilations
+type: INTS
+Value = [1 1 ]
+
+]
+
+
+____node 6 ____
+name: Plus112
+op_type: Add
+input = Convolution110_Output_0   Parameter88   
+out = Plus112_Output_0   
+attribute = [
+]
+
+
+____node 7 ____
+name: ReLU114
+op_type: Relu
+input = Plus112_Output_0   
+out = ReLU114_Output_0   
+attribute = [
+]
+
+
+____node 8 ____
+name: Pooling160
+op_type: MaxPool
+input = ReLU114_Output_0   
+out = Pooling160_Output_0   
+attribute = [
+name: kernel_shape
+type: INTS
+Value = [3 3 ]
+
+name: strides
+type: INTS
+Value = [3 3 ]
+
+name: pads
+type: INTS
+Value = [0 0 0 0 ]
+
+name: auto_pad
+type: STRING
+Value = NOTSET
+
+]
+
+
+____node 9 ____
+name: Times212_reshape0
+op_type: Reshape
+input = Pooling160_Output_0   Pooling160_Output_0_reshape0_shape   
+out = Pooling160_Output_0_reshape0   
+attribute = [
+]
+
+
+____node 10 ____
+name: Times212
+op_type: MatMul
+input = Pooling160_Output_0_reshape0   Parameter193_reshape1   
+out = Times212_Output_0   
+attribute = [
+]
+
+
+____node 11 ____
+name: Plus214
+op_type: Add
+input = Times212_Output_0   Parameter194   
+out = Plus214_Output_0   
+attribute = [
+]
+
+
+]
+
