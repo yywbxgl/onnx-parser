@@ -10,7 +10,7 @@ def loadModel(model_path):
 
 
 if __name__ == "__main__":
-    model = loadModel( "model.onnx")
+    model = loadModel( "../model.onnx")
     # print(model.producer_name)
     # print(model.graph.node)
     # print(model.graph.initializer)
