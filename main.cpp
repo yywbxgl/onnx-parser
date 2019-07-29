@@ -1,13 +1,15 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <iomanip> 
+ 
 
 #include "onnx.pb.h"
 // #include "include/json/json.h"
 
 using namespace std;
 
-// #define RAW_DATA 1
+#define RAW_DATA 1
 #define DOC_STRING 0
 
 void get_weight (const onnx::GraphProto& graph_proto) {
@@ -172,7 +174,21 @@ void parse_tensor_proto(const onnx::TensorProto& tensor_proto)
   {
     cout << "warning: can not pares data!" << endl;
   }
-  
+
+  if (tensor_proto.has_raw_data())
+  {
+    cout << "raw_data=[ " << endl;
+    
+    for (int i=0; i < tensor_proto.raw_data().length(); ++i)
+    {
+      // 显示二位  自动填充0
+      cout <<  std::hex << std::setw(2) << std::setfill('0') << (uint16_t)tensor_proto.raw_data()[i] << " ";
+
+    }
+
+    cout << "]" << endl;
+  }
+
 #endif
 
   cout << endl;
