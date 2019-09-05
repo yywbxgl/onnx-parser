@@ -9,7 +9,7 @@
 
 using namespace std;
 
-#define RAW_DATA 1
+// #define RAW_DATA 
 #define DOC_STRING 0
 
 void get_weight (const onnx::GraphProto& graph_proto) {

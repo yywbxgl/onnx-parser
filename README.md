@@ -3,7 +3,9 @@ parse onnx model & onnx operator convert
 
 ### Complie
 ```
-g++ main.cpp  onnx.pb.cc  /usr/local/lib/libprotobuf.a -std=c++11 -pthread -I/usr/local/include -o onnxParse
+g++ onnx_parse.cpp  onnx.pb.cc  /usr/local/lib/libprotobuf.a -std=c++11 -pthread -I/usr/local/include -o onnxParse
+
+g++ onnx_parse.cpp  onnx.pb.cc  /usr/local/lib/libprotobuf.a -std=c++11 -pthread -I/usr/local/include -D RAW_DATA -o onnxParse_weight
 
 g++ op_convert.cpp  onnx.pb.cc  /usr/local/lib/libprotobuf.a -std=c++11 -pthread -I/usr/local/include -o op_convert
 
