@@ -1,16 +1,30 @@
 # ONNX-parser
-解析ONNX  Model所有内容
+parse onnx model & onnx operator convert 
 
-### 编译命令
+### Complie
 ```
-g++ main.cpp  onnx.pb.cc  /usr/local/lib/libprotobuf.a -std=c++11 -pthread -I/usr/local/include -o test
-```
+g++ main.cpp  onnx.pb.cc  /usr/local/lib/libprotobuf.a -std=c++11 -pthread -I/usr/local/include -o onnxParse
 
-### 运行命令
-onnxParse只打印网络结构，onnxParse_weights可打印全部参数
-```
-$ ./bin/onnxParse model.onnx
+g++ op_convert.cpp  onnx.pb.cc  /usr/local/lib/libprotobuf.a -std=c++11 -pthread -I/usr/local/include -o op_convert
+
 ```
 
-### ONNX协议解析
+### Usage
+
+```
+# parse onnx model
+./bin/onnxParse  model.onnx
+
+# onnx operator convert
+./bin/op_convert  input.onnx  output_name
+
+# cherck onnx model
+python3 ./python_tool/cherck_model.py  out.onnx 
+
+# run onnx model
+python3 ./python_tool/onnx_run2.py  out.onnx
+
+```
+
+### ONNX protocol
 ![parse](./img/ONNX.jpg)
