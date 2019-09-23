@@ -22,7 +22,7 @@ g++ shape_inference.cpp  onnx.pb.cc  /usr/local/lib/libprotobuf.a -std=c++11 -pt
 # onnx operator convert
 ./bin/op_convert  input.onnx  output_name
 
-# cherck onnx model
+# check onnx model
 python3 ./python_tool/cherck_model.py  out.onnx 
 
 # run onnx model

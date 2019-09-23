@@ -203,7 +203,7 @@ void parse_valueinfo_proto(const onnx::ValueInfoProto& valueinfo_proto)
     cout << "type_denotaion: " << valueinfo_proto.type().denotation() << endl;
   }
   cout << "type_value_elem_type: " << onnx::TensorProto::DataType_Name(valueinfo_proto.type().tensor_type().elem_type()) << endl;
-  cout << "type_value_shape_dim = [ " ;
+  cout << "type_value_shape_dim_value = [ " ;
   for (int i=0; i < valueinfo_proto.type().tensor_type().shape().dim_size(); ++i)
   {
     if (DOC_STRING){
@@ -211,10 +211,17 @@ void parse_valueinfo_proto(const onnx::ValueInfoProto& valueinfo_proto)
       cout << "type_value_shape_dim_dim_param: " << valueinfo_proto.type().tensor_type().shape().dim(i).dim_param() << endl;
       cout << "type_value_shape_dim_denotation: " << valueinfo_proto.type().tensor_type().shape().dim(i).denotation() << endl;
     }else{
-      cout <<  valueinfo_proto.type().tensor_type().shape().dim(i).dim_value() << " ";
+      cout <<  valueinfo_proto.type().tensor_type().shape().dim(i).dim_value();
+      if (valueinfo_proto.type().tensor_type().shape().dim(i).dim_value() == 0)
+      {
+        cout << "/" << valueinfo_proto.type().tensor_type().shape().dim(i).dim_param();
+      }
+
+      cout << "  ";
     }
   }
   cout << "]" << endl;
+
   cout << endl;
    
 }

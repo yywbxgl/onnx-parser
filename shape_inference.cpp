@@ -4,208 +4,89 @@
 #include <iomanip> 
 #include <vector>
 #include <map>
+#include <cmath>
 
 #include "onnx.pb.h"
 
 using namespace std;
 
-
-//直接删除单层node
-void eliminate_node(onnx::ModelProto& model_proto, std::string node_type)
+class shapeInference
 {
-    bool finish_flag = false;
-    while(!finish_flag)
-    {
-        google::protobuf::RepeatedPtrField<onnx::NodeProto>::iterator it; 
-        it = model_proto.mutable_graph()->mutable_node()->begin();
+public:
+    shapeInference(onnx::ModelProto &model_proto);
 
-        for (; it != model_proto.mutable_graph()->mutable_node()->end(); ++it)
-        {
-            std::string input;
-            std::string output;
-            if (it->op_type() == node_type)
-            {
-                cout << "---- find node " << node_type << "----" << endl;
-                cout << "name = " << it->name()  << endl;
-                cout << "op_type = " << it->op_type() << endl;
-                cout << "input = " << it->input(0) << endl;  // identify has only one input
-                cout << "out = " << it->output(0) << endl;
+public:
+    void init_shape_map();
+    onnx::ModelProto inference();
+    int node_inference(int node_index);
+    int find_shape(std::string name);
+    std::vector<int> get_shape(std::string name);
+    int add_inference_shape(std::string name, std::vector<int> &shape, int type);
+    bool get_broadcast_shape (std::vector<int> a, std::vector<int> b, std::vector<int> &result);
+    int get_type(std::string name);
+    int get_input_type();
 
-                input = it->input(0);
-                output = it->output(0);
+private:
 
-                //找到上一层，修改上层的ouput
-                for (int i=0; i<model_proto.graph().node_size(); ++i) 
-                {
-                    if (model_proto.graph().node(i).output(0) == input)
-                    {
-                        cout << "---- find prev node: " << endl;
-                        cout << "name = " << model_proto.graph().node(i).name()  << endl;
-                        cout << "op_type = " << model_proto.graph().node(i).op_type() << endl;
-                        cout << "input = " << model_proto.graph().node(i).input(0) << endl; 
-                        cout << "out = " << model_proto.graph().node(i).output(0) << endl;
+    std::vector<int> shape_inference_conv(int node_index);
+    std::vector<int> shape_inference_broadcast(int node_index);
+    std::vector<int> shape_inference_same(int node_index);
+    std::vector<int> shape_inference_reshape(int node_index);
+    std::vector<int> shape_inference_matmul(int node_index);
+    std::vector<int> shape_inference_gemm(int node_index);
+    std::vector<int> shape_inference_globalPooling(int node_index);
+    std::vector<int> shape_inference_squeeze(int node_index);
 
-                        cout << "modify the output to " << output << endl;
-                        model_proto.mutable_graph()->mutable_node(i)->set_output(0, output);
-                    }   
-                }
+public:
+    onnx::ModelProto m_model_proto;
+    std::map<std::string,std::vector<int>> m_shape_map;
+    int m_input_type;
+};
 
-                //删除当前node
-                model_proto.mutable_graph()->mutable_node()->erase(it);
-                cout << "eliminate current node success."  << endl << endl;
-                break;
-            }
-        }
-
-        if(it == model_proto.mutable_graph()->mutable_node()->end())
-        {
-            finish_flag = true;
-        }
-    }
+shapeInference::shapeInference(onnx::ModelProto &in_model_proto)
+{
+    m_model_proto = in_model_proto;
+    init_shape_map();
+    get_input_type();
 }
 
-
-void fuse_matmul_add_bias_into_gemm(onnx::ModelProto& model_proto)
+void shapeInference::init_shape_map()
 {
-    google::protobuf::RepeatedPtrField<onnx::NodeProto>::iterator it; 
-    it = model_proto.mutable_graph()->mutable_node()->begin();
-    for (; it != model_proto.mutable_graph()->mutable_node()->end(); ++it)
+    for (int i=0; i< m_model_proto.graph().input_size(); ++i)
     {
-        std::string input;
-        std::string output;
-        std::string gemm_B;
-        std::string gemm_C;
-        std::string Add_output;
-
-        if (it->op_type() == "MatMul")
-        {
-            cout << "---- find MatMul node " << "----" << endl;
-            cout << "name = " << it->name()  << endl;
-            cout << "op_type = " << it->op_type() << endl;
-            cout << "input = " << it->input(0) << "  " << it->input(1) << endl;  //  has two input
-            cout << "out = " << it->output(0) << endl;
-
-            input = it->input(0);
-            gemm_B = it->input(1);
-            output = it->output(0);
-        }
-
-        //找到MatMul的下一层，是否为Add
-        for (int i=0; i<model_proto.graph().node_size(); ++i) 
-        {
-            if (model_proto.graph().node(i).input(0) == output)
-            {
-                cout << "---- find MatMul next node: " << endl;
-                cout << "name = " << model_proto.graph().node(i).name()  << endl;
-                cout << "op_type = " << model_proto.graph().node(i).op_type() << endl;
-                cout << "input = " << model_proto.graph().node(i).input(0) << "  " << model_proto.graph().node(i).input(1) << endl; 
-                cout << "out = " << model_proto.graph().node(i).output(0) << endl;
-
-                gemm_C = model_proto.graph().node(i).input(1);
-                Add_output =  model_proto.graph().node(i).output(0);
-
-                if (model_proto.graph().node(i).op_type() == "Add")
-                {
-                    cout << "next node is add. fuse_matmul_add_bias_into_gemm." << endl;
-                    // 创建新的GEMM Node
-                    // onnx::NodeProto* gemm_node =  model_proto.mutable_graph()->add_node();
-                    // string gemm_name =   "Gemm_" + output;
-                    // string gemm_out_name =  "Gemm_" + output + "_Y";
-                    // gemm_node->set_name(gemm_name);
-                    // gemm_node->set_op_type("Gemm");
-                    // gemm_node->add_input(input);
-                    // gemm_node->add_input(gemm_B);
-                    // gemm_node->add_input(gemm_C);
-                    // gemm_node->add_output(gemm_out_name);
-
-                    // cout << "---- create gemm node." << endl;
-                    // cout << "name = " << gemm_node->name()  << endl;
-                    // cout << "op_type = " << gemm_node->op_type() << endl;
-                    // cout << "input = " << gemm_node->input(0) << "  " << gemm_node->input(1) <<  "  "<< gemm_node->input(2)  << endl; 
-                    // cout << "out = " << gemm_node->output(0) << endl;
-
-                    //修改当前add变为gemm，output shape 应该保持不变
-                    cout << "---- modify Add node to gemm" << endl;
-                    // model_proto.mutable_graph()->mutable_node(i)->set_name(gemm_name);
-                    model_proto.mutable_graph()->mutable_node(i)->set_op_type("Gemm");
-                    // model_proto.mutable_graph()->mutable_node(i)->set_input(0, input);
-                    model_proto.mutable_graph()->mutable_node(i)->set_input(1, gemm_B);
-                    model_proto.mutable_graph()->mutable_node(i)->add_input(gemm_C);
-                    // model_proto.mutable_graph()->mutable_node(i)->set_output(0, gemm_C);
-
-                    // cout << "op_type = " << gemm_node->op_type() << endl;
-                    // cout << "input = " << model_proto.mutable_graph()->mutable_node(i).input(0) << "  " << gemm_node->input(1) <<  "  "<< gemm_node->input(2)  << endl; 
-                    // cout << "out = " << gemm_node->output(0) << endl;
-
-                    //修改MatMul节点变为reshape, 修改weiight指向new_reshape
-                    cout << "---- modify MatMul node to reshape" << endl;
-                    std::string new_shape_name = it->name() + "_reshape";
-                    it->set_op_type("Reshape") ;
-                    it->set_input(1, new_shape_name) ;
-                    
-                    //添加reshape 到initializer
-                    cout << "---- add reshape to initializer" << endl;
-                    onnx::TensorProto* new_shape = model_proto.mutable_graph()->add_initializer();  
-                    new_shape->set_name(new_shape_name);
-                    new_shape->set_data_type(7);  //data_type = INT64
-                    new_shape->add_dims(2);
-                    new_shape->add_int64_data(1);  // todo 根据gemm B 参数  已经该层的output形状 来确认reshape形状
-                    new_shape->add_int64_data(2048);
-                    cout << "new reshape data  " << new_shape->int64_data(0) << endl;
-                    cout << "new reshape data  " << new_shape->int64_data(1) << endl;
-
-                    //添加reshape 到input
-                    cout << "---- add reshape to input" << endl;
-                    onnx::ValueInfoProto* new_input = model_proto.mutable_graph()->add_input();  
-                    new_input->set_name(new_shape_name);
-                    new_input->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
-                    new_input->mutable_type()->mutable_tensor_type()->set_elem_type(7);
-
-                }
-            }   
-        }
-    }
-
-    return;
-}
-
-void init_shape_map(onnx::ModelProto& model_proto, std::map<std::string,std::vector<int>> &shape_map)
-{
-    for (int i=0; i< model_proto.graph().input_size(); ++i)
-    {
-        std::string shape_name = model_proto.graph().input(i).name();
+        std::string shape_name = m_model_proto.graph().input(i).name();
         // cout << "find input " << shape_name << endl;
-        for (int j=0; j < model_proto.graph().input(i).type().tensor_type().shape().dim_size(); ++j)
+        std::vector<int> temp;
+        for (int j=0; j < m_model_proto.graph().input(i).type().tensor_type().shape().dim_size(); ++j)
         {
-            std::vector<int> result;
-            // cout <<  model_proto.graph().input(i).type().tensor_type().shape().dim(j).dim_value() << endl;
-            result.push_back(model_proto.graph().input(i).type().tensor_type().shape().dim(j).dim_value());
-            shape_map[shape_name]=result;
+            // cout <<  m_model_proto.graph().input(i).type().tensor_type().shape().dim(j).dim_value() << endl;
+            temp.push_back(m_model_proto.graph().input(i).type().tensor_type().shape().dim(j).dim_value());
         }
+        m_shape_map.insert(std::pair<std::string,std::vector<int>>(shape_name, temp));
     }
 
-    for (int i=0; i<  model_proto.graph().value_info_size(); ++i)
+    for (int i=0; i<  m_model_proto.graph().value_info_size(); ++i)
     {
-        std::string shape_name = model_proto.graph().value_info(i).name();
-        // cout << "find " << shape_name << endl;
-        for (int j=0; j < model_proto.graph().value_info(i).type().tensor_type().shape().dim_size(); ++j)
+        std::string shape_name = m_model_proto.graph().value_info(i).name();
+        // cout << "find value info " << shape_name << endl;
+        std::vector<int> temp;
+        for (int j=0; j < m_model_proto.graph().value_info(i).type().tensor_type().shape().dim_size(); ++j)
         {
-            std::vector<int> result;
-            // cout <<  model_proto.graph().value_info(i).type().tensor_type().shape().dim(j).dim_value() << endl;
-            result.push_back(model_proto.graph().value_info(i).type().tensor_type().shape().dim(j).dim_value());
-            shape_map[shape_name]=result;
-        } 
+            // cout <<  m_model_proto.graph().value_info(i).type().tensor_type().shape().dim(j).dim_value() << endl;
+            temp.push_back(m_model_proto.graph().value_info(i).type().tensor_type().shape().dim(j).dim_value());
+        }
+        m_shape_map.insert(std::pair<std::string,std::vector<int>>(shape_name, temp));
     }
 
     return;
 }
 
-// ret   -1未找到
-int find_shape(std::string name, std::map<std::string,std::vector<int>> &shape_map)
+// ret -1未找到
+int shapeInference::find_shape(std::string name)
 {
     std::map<std::string,std::vector<int>>::iterator iter;
-    iter = shape_map.find(name);
-    if(iter!=shape_map.end())
+    iter = m_shape_map.find(name);
+    if(iter != m_shape_map.end())
     {
         return 0;
     }
@@ -216,81 +97,546 @@ int find_shape(std::string name, std::map<std::string,std::vector<int>> &shape_m
 }
 
 
-// // ret  -1未找到   0-ok
-// int get_shape(std::string name,  std::vector<int>& shape)
-// {
-//     std::vector<int> ret;
-//     return ret ;
-// }
-
-// 返回  -1 需要先推理上一层  0 推理当前层成功
-int node_inference(onnx::ModelProto& model_proto,int node_index, std::map<std::string,std::vector<int>> &shape_map)
+std::vector<int> shapeInference::get_shape(std::string name)
 {
-    for (int i=0; i<model_proto.graph().node(node_index).input_size();++i)
+    std::vector<int> result;
+    std::map<std::string,std::vector<int>>::iterator iter;
+    iter = m_shape_map.find(name);
+    if(iter != m_shape_map.end())
     {
-        //如果上一层的性质未定义，先推理上一层结构
-        std::string prev_output_name = model_proto.graph().node(node_index).input(i);
-        if (find_shape (prev_output_name, shape_map) < 0)
+        result = iter->second;
+        cout << "get shape success. " << name << endl;
+    }
+
+    for (int i=0; i<iter->second.size(); ++i)
+    {
+        cout << iter->second[i] << " " ;
+    }
+    cout << endl;
+
+    return result;
+}
+
+
+int shapeInference::get_input_type()
+{
+    int ret=-1;
+    for (int i=0; i< m_model_proto.graph().input_size(); ++i)
+    {
+        std::string name = m_model_proto.graph().input(i).name();
+        if (name.find("input") != std::string::npos || name.find("Input") != std::string::npos || name.find("INPUT") != std::string::npos)
         {
-            for (int j =0; j <model_proto.graph().node_size(); ++j)
+            ret = m_model_proto.graph().input(i).type().tensor_type().elem_type();
+        }
+    }
+    if (ret != -1)
+    {
+        m_input_type = ret;
+        cout << "my input type: " << m_input_type << endl;
+    }
+    return ret;  
+}
+
+int shapeInference::get_type(std::string name)
+{
+    for (int i=0; i< m_model_proto.graph().input_size(); ++i)
+    {
+        if (name ==  m_model_proto.graph().input(i).name())
+        {
+            return m_model_proto.graph().input(i).type().tensor_type().elem_type();
+        }
+    }
+
+    for (int i=0; i< m_model_proto.graph().initializer_size(); ++i)
+    {
+        if (name ==  m_model_proto.graph().initializer(i).name())
+        {
+            return m_model_proto.graph().initializer(i).data_type();
+        }
+    }
+
+    return -1;
+}
+
+bool shapeInference::get_broadcast_shape(std::vector<int> a, std::vector<int> b, std::vector<int>  &result)
+{
+    int len_a = a.size() -1 ;
+    int len_b = b.size() -1 ;
+    std::vector<int> ret;
+    while ( len_a >=0 || len_b >=0 )
+    {
+        int temp_a = 1;
+        int temp_b = 1;
+        if (len_a >=0) temp_a = a[len_a];
+        if (len_b >=0) temp_b = b[len_b];
+        
+        if ((temp_a != temp_b) && !(temp_a ==1 || temp_b==1))
+        {
+            cout << "error!. can not bradcast. " <<  a[len_a] << " to " << b[len_b] << endl;
+            return false;
+        }
+        ret.push_back(max(temp_a,  temp_b));
+        len_a --;
+        len_b --;
+    }
+    
+    for (int i=ret.size()-1; i >=0; --i)
+    {
+        result.push_back(ret[i]);
+    }
+
+    return true;
+}
+
+int shapeInference::add_inference_shape(std::string name, std::vector<int> &shape, int type)
+{
+    onnx::ValueInfoProto* new_proto = m_model_proto.mutable_graph()->add_value_info();
+    new_proto->set_name(name);
+    new_proto->mutable_type()->mutable_tensor_type()->set_elem_type(type);
+    cout << "add to shape map. " << name << endl;
+    for (int i=0; i< shape.size(); ++i)
+    {
+        new_proto->mutable_type()->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(shape[i]);
+    }
+
+    return 0;
+}
+
+// conv 推理
+std::vector<int> shapeInference::shape_inference_conv(int node_index)
+{
+
+    //conv 输入为x w b(optional)
+    printf("-----\nshape inference: %s %s\n", m_model_proto.graph().node(node_index).op_type().c_str(), 
+        m_model_proto.graph().node(node_index).name().c_str());
+
+    int N = -1;
+    int C = -1;
+    int H = -1;
+    int W = -1;
+    
+    if (m_model_proto.graph().node(node_index).op_type() == "Conv")
+    {
+        std::string x_name = m_model_proto.graph().node(node_index).input(0);
+        std::string w_name = m_model_proto.graph().node(node_index).input(1);
+        
+        // cout << x_name << endl;
+        std::vector<int> x_shape = get_shape (x_name);
+        std::vector<int> w_shape = get_shape (w_name);
+
+        N = x_shape[0];
+        C = w_shape[0];
+        H = x_shape[2];
+    }
+    else 
+    {
+        std::string input_name = m_model_proto.graph().node(node_index).input(0);
+        std::vector<int> input_shape = get_shape(input_name);
+        N = input_shape[0];
+        C = input_shape[1];
+        H = input_shape[2];
+    }
+
+    int stride = -1;
+    int left_pad = -1 ;
+    int right_pad = -1 ;
+    int kernal_shape = -1;
+    bool auto_pad = false;
+    std::string auto_pad_value;
+    for (int i=0; i< m_model_proto.graph().node(node_index).attribute_size(); ++i)
+    {
+        if (m_model_proto.graph().node(node_index).attribute(i).name() == "strides")
+        {
+            stride = m_model_proto.graph().node(node_index).attribute(i).ints(0); //todo: only support same stride
+            cout << "stride: " <<  stride << endl;
+        }
+        else if (m_model_proto.graph().node(node_index).attribute(i).name() == "kernel_shape")
+        {
+            kernal_shape = m_model_proto.graph().node(node_index).attribute(i).ints(0); //todo: only support same kernel_shape
+            cout << "kernal_shape: " <<  kernal_shape << endl;
+        }
+        else if (m_model_proto.graph().node(node_index).attribute(i).name() == "pads")
+        {
+            left_pad = m_model_proto.graph().node(node_index).attribute(i).ints(0);  //todo: only support same pads
+            right_pad = m_model_proto.graph().node(node_index).attribute(i).ints(2);
+            cout << "pads: " <<  left_pad << " "<< right_pad << endl;
+        }
+        else if (m_model_proto.graph().node(node_index).attribute(i).name() == "auto_pad")
+        {
+            auto_pad = true;
+            auto_pad_value = m_model_proto.graph().node(node_index).attribute(i).s();
+            cout << "auto_pad: " <<  auto_pad_value  << endl;
+        }
+    }
+
+    std::vector<int> output_shape;
+    int out = -1;    
+
+    if (auto_pad_value == "SAME_UPPER" || auto_pad_value == "SAME_LOWER")
+    {
+        out = ceil(H/(float)stride);
+    }
+    else if (auto_pad_value == "VALID") 
+    {
+        left_pad = right_pad = 0;
+        out = floor((H + left_pad + right_pad - kernal_shape)/(float)stride) + 1;
+    }
+    else
+    {
+        out = floor((H + left_pad + right_pad - kernal_shape)/(float)stride) + 1;
+    }
+ 
+
+    cout << "out_shape: " << N << " " << C << " " << out << " " << out << endl;
+
+    output_shape.push_back(N);
+    output_shape.push_back(C);
+    output_shape.push_back(out);
+    output_shape.push_back(out);
+
+    return output_shape;
+}
+
+// relu 等推理
+std::vector<int> shapeInference::shape_inference_same(int node_index)
+{
+    printf("-----\nshape inference: %s %s\n", m_model_proto.graph().node(node_index).op_type().c_str(), 
+        m_model_proto.graph().node(node_index).name().c_str());
+
+    std::string input_name = m_model_proto.graph().node(node_index).input(0);
+    std::string output_name = m_model_proto.graph().node(node_index).output(0);
+    std::vector<int> input_shape = get_shape (input_name);
+    std::vector<int> output_shape = input_shape; //输入与输出相等
+
+    cout << "same out shape: " ;
+    for (int i=0; i< output_shape.size(); ++i)
+    {
+        cout << output_shape[i] << " " ;
+    }
+    cout << endl;
+
+    return output_shape;
+}
+
+
+//reshape  推理
+std::vector<int> shapeInference::shape_inference_reshape(int node_index)
+{
+    printf("-----\nshape inference: %s %s\n", m_model_proto.graph().node(node_index).op_type().c_str(), 
+        m_model_proto.graph().node(node_index).name().c_str());
+    
+    std::string reshape_name = m_model_proto.graph().node(node_index).input(1);
+    std::vector<int> output_shape;
+    
+    for (int i=0; i < m_model_proto.graph().initializer_size(); ++i)
+    {
+        if (m_model_proto.graph().initializer(i).name() == reshape_name)
+        {
+            for (int j=0; j < m_model_proto.graph().initializer(i).int64_data_size(); ++j)
             {
-                if (model_proto.graph().node(j).name() == prev_output_name);
-                node_inference(model_proto, j, shape_map);
+                // cout << m_model_proto.graph().initializer(i).int64_data(j) << " ";
+                output_shape.push_back(m_model_proto.graph().initializer(i).int64_data(j));
             }
+            // cout << endl;
+        }
+    }
+
+    cout  << "out shape: " ;
+    for (int i=0; i< output_shape.size(); ++i)
+    {
+        cout << output_shape[i] << " " ;
+    }
+    cout << endl;
+    return output_shape;
+}
+
+// add 等推理
+std::vector<int> shapeInference::shape_inference_broadcast(int node_index)
+{
+    //Add 输入为A B, 矩阵相加，允许broadcasting
+    printf("-----\nshape inference: %s %s\n", m_model_proto.graph().node(node_index).op_type().c_str(), 
+        m_model_proto.graph().node(node_index).name().c_str());
+    std::string a_name = m_model_proto.graph().node(node_index).input(0);
+    std::string b_name = m_model_proto.graph().node(node_index).input(1);
+    std::vector<int> a_shape = get_shape (a_name);
+    std::vector<int> b_shape = get_shape (b_name);
+
+    std::vector<int> output_shape;
+    get_broadcast_shape(a_shape, b_shape, output_shape);
+
+    cout << "broadcast out shape: " ;
+    for (int i=0; i< output_shape.size(); ++i)
+    {
+        cout << output_shape[i] << " " ;
+    }
+    cout << endl;
+
+    return output_shape;   
+}
+
+//matmul 推理
+std::vector<int> shapeInference::shape_inference_matmul(int node_index)
+{
+     //Add 输入为A B, 矩阵相加，允许broadcasting
+    printf("-----\nshape inference: %s %s\n", m_model_proto.graph().node(node_index).op_type().c_str(), 
+        m_model_proto.graph().node(node_index).name().c_str());
+    std::string a_name = m_model_proto.graph().node(node_index).input(0);
+    std::string b_name = m_model_proto.graph().node(node_index).input(1);
+    std::vector<int> a_shape = get_shape (a_name);
+    std::vector<int> b_shape = get_shape (b_name);
+    std::vector<int> output_shape;
+
+    //必须维度相同，其他可乘
+    int len_shape = a_shape.size();
+    if ((a_shape.size()  != b_shape.size()) ||  (a_shape[len_shape-1] != b_shape[len_shape-2]))
+    {
+        cout << "error. shape canot natmul." << endl;
+        return output_shape; 
+    }
+
+    for (int i=0; i < a_shape.size() -1; ++i)
+    {
+        output_shape.push_back(a_shape[i]);
+    }
+    output_shape.push_back(b_shape[len_shape-1]);
+
+    return output_shape;   
+}
+
+//gemm 推理
+std::vector<int> shapeInference::shape_inference_gemm(int node_index)
+{
+    printf("-----\nshape inference: %s %s\n", m_model_proto.graph().node(node_index).op_type().c_str(), 
+        m_model_proto.graph().node(node_index).name().c_str());
+    
+    std::string a_name = m_model_proto.graph().node(node_index).input(0);
+    std::string b_name = m_model_proto.graph().node(node_index).input(1);
+    std::string c_name = m_model_proto.graph().node(node_index).input(2);
+    std::vector<int> a_shape = get_shape (a_name);
+    std::vector<int> b_shape = get_shape (b_name);
+
+    int trans_a = 0;
+    int trans_b = 0;
+    for (int i=0; i< m_model_proto.graph().node(node_index).attribute_size(); ++i)
+    {
+        if (m_model_proto.graph().node(node_index).attribute(i).name() == "transA")
+        {
+            trans_a = m_model_proto.graph().node(node_index).attribute(i).i(); //todo: only support same stride
+            cout << "transA: " <<  trans_a << endl;
+        }
+        else if (m_model_proto.graph().node(node_index).attribute(i).name() == "transB")
+        {
+            trans_b = m_model_proto.graph().node(node_index).attribute(i).i(); //todo: only support same kernel_shape
+            cout << "transB: " <<  trans_b << endl;
+        }
+    }
+
+    std::vector<int> a_shape_temp;
+    std::vector<int> b_shape_temp;
+    if (trans_a == 1)
+    {
+        for (int i=a_shape.size()-1; i>=0; --i)
+        {
+            a_shape_temp.push_back(a_shape[i]);
+        }
+    }
+    else
+    {
+        a_shape_temp = a_shape;
+    }
+
+    if (trans_b == 1)
+    {
+        for (int i=b_shape.size()-1; i>=0; --i)
+        {
+            b_shape_temp.push_back(b_shape[i]);
+        }
+    }
+    else
+    {
+        b_shape_temp = b_shape;
+    }
+
+
+    std::vector<int> output_shape;
+
+    //必须维度相同，其他可乘
+    int len_shape = a_shape_temp.size();
+    if ((a_shape_temp.size()  != b_shape_temp.size()) ||  (a_shape_temp[len_shape-1] != b_shape_temp[len_shape-2]))
+    {
+        cout << "error. shape canot natmul." << endl;
+        return output_shape; 
+    }
+
+    for (int i=0; i < a_shape_temp.size() -1; ++i)
+    {
+        output_shape.push_back(a_shape_temp[i]);
+    }
+    output_shape.push_back(b_shape_temp[len_shape-1]);
+
+    return output_shape;   
+}
+
+
+// globalpooling 推理
+std::vector<int> shapeInference::shape_inference_globalPooling(int node_index)
+{
+    printf("-----\nshape inference: %s %s\n", m_model_proto.graph().node(node_index).op_type().c_str(), 
+        m_model_proto.graph().node(node_index).name().c_str());
+    
+    std::string input_name = m_model_proto.graph().node(node_index).input(0);
+    std::vector<int> input_shape = get_shape (input_name);
+
+    int N = input_shape[0];
+    int C = input_shape[1];
+    int H = input_shape[2];
+    int W = input_shape[3];
+
+    std::vector<int> output_shape;
+    output_shape.push_back(N);
+    output_shape.push_back(C);
+    output_shape.push_back(1);
+    output_shape.push_back(1);
+
+    return output_shape;
+}
+
+
+std::vector<int> shapeInference::shape_inference_squeeze(int node_index)
+{
+    printf("-----\nshape inference: %s %s\n", m_model_proto.graph().node(node_index).op_type().c_str(), 
+        m_model_proto.graph().node(node_index).name().c_str());
+    
+    std::string input_name = m_model_proto.graph().node(node_index).input(0);
+    std::vector<int> input_shape = get_shape (input_name);
+    std::vector<int> outpt_shape;
+
+    std::vector<int> axes;
+    for (int i=0; i< m_model_proto.graph().node(node_index).attribute_size(); ++i)
+    {
+        if (m_model_proto.graph().node(node_index).attribute(i).name() == "axes")
+        {
+            for (int j=0; j < m_model_proto.graph().node(node_index).attribute(i).ints_size(); ++j)
+            {
+                axes.push_back(m_model_proto.graph().node(node_index).attribute(i).ints(j));
+            }
+        }
+    }
+
+    // todo
+
+    return outpt_shape;
+}
+
+// 返回  -1 失败   0 成功
+int shapeInference::node_inference(int node_index)
+{
+    //如果上一层的形状未定义，返回推理失败
+    for (int i=0; i<m_model_proto.graph().node(node_index).input_size();++i)
+    {
+        std::string prev_output_name = m_model_proto.graph().node(node_index).input(i);
+        if (find_shape (prev_output_name) < 0)
+        {
             return -1;
         }
     }
 
-    std::string op_type = model_proto.graph().node(node_index).op_type();
-    if (op_type == "Conv")
+    //如果已经推理过，有output，直接返回
+    if (find_shape (m_model_proto.graph().node(node_index).output(0)) >= 0)
     {
-        // shape_inference_conv(); 
+        return 0;
     }
 
-    // switch (op_type)
-    // {
-    //     case "Conv":
-    //         // shape_inference_conv();
-    //         break;
-    //     case "Relu":
-    //         break;
-    //     case "MaxPool":
-    //         break; 
-    //     case "BatchNormalization":
-    //         break;
-    //     case "Add":
-    //         break;
-    //     case "Transpose":
-    //         break;
-    //     case "Softmax":
-    //         break;
-    //     case "Reshape":
-    //         break;
-    // }
+    std::string op_type = m_model_proto.graph().node(node_index).op_type();
+    std::vector<int> output_shape;
+    if (op_type == "Conv" || op_type == "MaxPool" || op_type == "AveragePool")
+    {
+        output_shape = shape_inference_conv(node_index); 
+    }
+    else if (op_type == "Add" || op_type == "Sum")
+    {
+        output_shape = shape_inference_broadcast(node_index);
+    }
+    else if (op_type == "Relu" || op_type == "LRN" || op_type == "BatchNormalization" ||  op_type == "Softmax")
+    {
+        output_shape = shape_inference_same(node_index);
+    }
+    else if (op_type == "Reshape")
+    {
+        output_shape = shape_inference_reshape(node_index);
+    }
+    else if (op_type == "MatMul")
+    {
+        output_shape = shape_inference_matmul(node_index);
+    }
+    else if (op_type == "Gemm")
+    {
+        output_shape = shape_inference_gemm(node_index);
+    }
+    else if (op_type == "GlobalAveragePool" || op_type == "GlobalMaxPool")
+    {
+        output_shape = shape_inference_globalPooling(node_index);
+    }
+    else if (op_type == "Squeeze" || op_type == "Unsqueeze")
+    {
+        output_shape = shape_inference_squeeze(node_index);
+    }
+    else
+    {
+        cout << "error. " << op_type << " not support inference." << endl;
+        return -1;
+    }
 
-    
+
+    //推理结果放入shape_map中
+    std::string output_name = m_model_proto.graph().node(node_index).output(0);
+    m_shape_map.insert(std::pair<std::string,std::vector<int>>(output_name, output_shape));
+
+
+    //推理将结果放入value_info中
+    add_inference_shape(output_name, output_shape, m_input_type);     // type  FLOAT = 1;  
+    // cout << "node shaped: " << m_model_proto.graph().node(node_index).name() << endl;
 
     return 0;
 }
 
 
 
-void shape_inference(onnx::ModelProto& model_proto)
-{
-    
-    std::map<std::string, std::vector<int>> shape_map;
-    init_shape_map(model_proto, shape_map);
 
-    std::string input_name = model_proto.graph().input(0).name();
-    cout << input_name << endl;
- 
-    // 找到下一层并推理形状
-    for (int i=0; i< model_proto.graph().node_size(); ++i)
+onnx::ModelProto shapeInference::inference()
+{
+    // 检查输入是否为固定形状，动态输入无法推理
+    std::string input_name = m_model_proto.graph().input(0).name();
+    cout << input_name  << ": " ;
+    bool ok_flag = true;
+    for (int i=0; i< m_model_proto.graph().input(0).type().tensor_type().shape().dim_size(); ++i)
     {
-        //推理当前node的output形状
-        cout << "----- node: " << model_proto.graph().node(i).name() << endl;
-        node_inference(model_proto, i, shape_map);
+        int vaule = m_model_proto.graph().input(0).type().tensor_type().shape().dim(i).dim_value();
+        cout <<  vaule << " " ;
+        // cout <<  m_model_proto.graph().input(0).type().tensor_type().shape().dim(i).dim_param() << endl;
+        if (vaule == 0)
+        {
+            ok_flag = false;
+        }
     }
+    cout << endl;
+    if (!ok_flag)
+    {
+        cout <<  "error! input shape unkown, can not shape inference!" << endl ;
+        return m_model_proto;
+    }
+
+    int k = m_model_proto.graph().node_size();
+    while (k--)
+    {
+        for (int i=0; i< m_model_proto.graph().node_size(); ++i)
+        {
+            //推理当前node的output形状
+            node_inference(i);
+        }
+    }
+
+    return m_model_proto;
 }
 
 
@@ -321,20 +667,15 @@ int main(int argc, char const *argv[])
         }
     }
 
-    // onnx convert
-    // eliminate_node(model_proto, "Identity");
-    // eliminate_node(model_proto, "Dropout");
-    // eliminate_node(model_proto, "ReduceMean");
-    // fuse_matmul_add_bias_into_gemm(model_proto);
-    // modify_input(model_proto);
-
-    shape_inference(model_proto);
+    onnx::ModelProto new_model_proto;
+    shapeInference my_shape(model_proto);
+    new_model_proto = my_shape.inference();
 
     {
         // Write the new model back to disk.
         std::string output_file_name  = std::string(argv[2]) + ".onnx";
         fstream output(output_file_name, ios::out | ios::trunc | ios::binary);
-        if (!model_proto.SerializeToOstream(&output)) 
+        if (!new_model_proto.SerializeToOstream(&output)) 
         {
             std::cerr << "Failed to write address book." << endl;
             return -1;
