@@ -8,6 +8,39 @@
 
 using namespace std;
 
+
+// 添加一个softmax节点在网络末尾
+void add_softmax_node(onnx::ModelProto& model_proto)
+{
+    //找到最后一个节点
+    cout << "---- add softmax at the end of network" << endl;
+    std::string output_name = model_proto.graph().output(0).name();
+
+    google::protobuf::RepeatedPtrField<onnx::NodeProto>::iterator it; 
+    it = model_proto.mutable_graph()->mutable_node()->begin();
+    for (; it != model_proto.mutable_graph()->mutable_node()->end(); ++it)
+    {
+        if(it->output(0) == output_name)
+        {
+            std::string pre_node = it->name();
+            cout << "find end node: " << pre_node << " " << it->op_type() << endl;
+            it->set_output(0, pre_node + "out");
+            
+            // 新增softmax node
+            std::string new_node_name = "softmax_" + output_name;
+            onnx::NodeProto* new_node = model_proto.mutable_graph()->add_node();
+            new_node->set_name(new_node_name);
+            new_node->set_op_type("Softmax");
+            new_node->add_input(pre_node + "out");
+            new_node->add_output(output_name);
+            break;
+        }
+    }
+
+    return;
+}
+
+
 // 修改input形状
 void modify_input(onnx::ModelProto& model_proto)
 {
@@ -358,6 +391,13 @@ void eliminate_softmax_attributes(onnx::ModelProto& model_proto)
     }
 }
 
+
+void clear_value_info(onnx::ModelProto& model_proto)
+{
+    model_proto.mutable_graph()->clear_value_info();
+}
+
+
 int main(int argc, char const *argv[]) 
 {
 
@@ -386,18 +426,21 @@ int main(int argc, char const *argv[])
     }
 
     // onnx convert
-    eliminate_node(model_proto, "Identity");
-    eliminate_node(model_proto, "Dropout");
-    eliminate_node(model_proto, "ReduceMean");
-    eliminate_node(model_proto, "Transpose");
+    // eliminate_node(model_proto, "Identity");
+    // eliminate_node(model_proto, "Dropout");
+    // eliminate_node(model_proto, "ReduceMean");
+    // eliminate_node(model_proto, "Transpose");
 
-    fuse_matmul_add_bias_into_gemm(model_proto);
-    modify_input(model_proto);
-    auto_pad_convert(model_proto);
-    eliminate_softmax_attributes(model_proto);
+    // fuse_matmul_add_bias_into_gemm(model_proto);
+    // modify_input(model_proto);
+    
+    // auto_pad_convert(model_proto);
+    // eliminate_softmax_attributes(model_proto);
 
+    // modify_weights(model_proto);
+    // clear_value_info(model_proto);
 
-    modify_weights(model_proto);
+    add_softmax_node(model_proto);
 
     {
         // Write the new model back to disk.
